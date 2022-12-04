@@ -7,19 +7,23 @@ import torch.optim as optim
 from thop import profile, clever_format
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
+from tree_model import probability_vec_with_level, tree_loss, regularization_loss
 import utils
 from model import Model
+from metrics import tree_acc
+import numpy
+from sklearn.metrics import normalized_mutual_info_score
 
 
 # train for one epoch to learn unique features
-def train(net, data_loader, train_optimizer):
+def train(net, data_loader, train_optimizer, epoch):
+    mean_of_probs_per_level_per_epoch = {level: torch.zeros(2**level).cuda() for level in range(1, 5)}
     net.train()
     total_loss, total_num, train_bar = 0.0, 0, tqdm(data_loader)
     for pos_1, pos_2, target in train_bar:
         pos_1, pos_2 = pos_1.cuda(non_blocking=True), pos_2.cuda(non_blocking=True)
-        feature_1, out_1 = net(pos_1)
-        feature_2, out_2 = net(pos_2)
+        feature_1, out_1, tree_output1 = net(pos_1)
+        feature_2, out_2, tree_output2 = net(pos_2)
         # [2*B, D]
         out = torch.cat([out_1, out_2], dim=0)
         # [2*B, 2*B]
@@ -27,13 +31,18 @@ def train(net, data_loader, train_optimizer):
         mask = (torch.ones_like(sim_matrix) - torch.eye(2 * batch_size, device=sim_matrix.device)).bool()
         # [2*B, 2*B-1]
         sim_matrix = sim_matrix.masked_select(mask).view(2 * batch_size, -1)
-
         # compute loss
         pos_sim = torch.exp(torch.sum(out_1 * out_2, dim=-1) / temperature)
         # [2*B]
         pos_sim = torch.cat([pos_sim, pos_sim], dim=0)
         loss = (- torch.log(pos_sim / sim_matrix.sum(dim=-1))).mean()
+        ### TREE LOSS
+        tree_loss_value = tree_loss(tree_output1, tree_output2, batch_size, net.masks_for_level, mean_of_probs_per_level_per_epoch)
+        regularization_loss_value = regularization_loss(tree_output1, tree_output2, net.masks_for_level)
+        ##
+        ##       
         train_optimizer.zero_grad()
+        loss = loss + tree_loss_value + (2**(-4)*regularization_loss_value)
         loss.backward()
         train_optimizer.step()
 
@@ -41,17 +50,24 @@ def train(net, data_loader, train_optimizer):
         total_loss += loss.item() * batch_size
         train_bar.set_description('Train Epoch: [{}/{}] Loss: {:.4f}'.format(epoch, epochs, total_loss / total_num))
 
+    if epoch <= 6:
+        x = mean_of_probs_per_level_per_epoch[4]/ len(data_loader)
+        x = x.double()
+        test = torch.where(x > 0.0, x, 1.0) 
+        net.masks_for_level[4][torch.argmin(test)] = 0
+        print(net.masks_for_level[4])
     return total_loss / total_num
-
 
 # test for one epoch, use weighted knn to find the most similar images' label to assign the test image
 def test(net, memory_data_loader, test_data_loader):
     net.eval()
     total_top1, total_top5, total_num, feature_bank = 0.0, 0.0, 0, []
+    histograms_for_each_label_per_level = {4 : numpy.array([numpy.zeros_like(torch.empty(2**4)) for i in range(0, 10)])}
+    labels, predictions = [], []
     with torch.no_grad():
         # generate feature bank
         for data, _, target in tqdm(memory_data_loader, desc='Feature extracting'):
-            feature, out = net(data.cuda(non_blocking=True))
+            feature, out, tree_output = net(data.cuda(non_blocking=True))
             feature_bank.append(feature)
         # [D, N]
         feature_bank = torch.cat(feature_bank, dim=0).t().contiguous()
@@ -61,8 +77,7 @@ def test(net, memory_data_loader, test_data_loader):
         test_bar = tqdm(test_data_loader)
         for data, _, target in test_bar:
             data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
-            feature, out = net(data)
-
+            feature, out, tree_output = net(data)
             total_num += data.size(0)
             # compute cos similarity between each feature vector and feature bank ---> [B, N]
             sim_matrix = torch.mm(feature, feature_bank)
@@ -82,8 +97,20 @@ def test(net, memory_data_loader, test_data_loader):
             pred_labels = pred_scores.argsort(dim=-1, descending=True)
             total_top1 += torch.sum((pred_labels[:, :1] == target.unsqueeze(dim=-1)).any(dim=-1).float()).item()
             total_top5 += torch.sum((pred_labels[:, :5] == target.unsqueeze(dim=-1)).any(dim=-1).float()).item()
-            test_bar.set_description('Test Epoch: [{}/{}] Acc@1:{:.2f}% Acc@5:{:.2f}%'
-                                     .format(epoch, epochs, total_top1 / total_num * 100, total_top5 / total_num * 100))
+
+            ## TREE PART
+            prob_features = probability_vec_with_level(tree_output, 4)
+            prob_features = net.masks_for_level[4] * prob_features
+            for prediction, label in zip(torch.argmax(prob_features.detach(), dim=1), target.detach()):
+                predictions.append(prediction.item())
+                labels.append(label.item())
+                histograms_for_each_label_per_level[4][label.item()][prediction.item()] += 1
+            df_cm = pd.DataFrame(histograms_for_each_label_per_level[4], index = [class1 for class1 in range(0,10)], columns = [i for i in range(0,2**4)])
+            tree_acc_val = tree_acc(df_cm)
+            actuall_nmi = normalized_mutual_info_score(labels, predictions)
+            test_bar.set_description('Test Epoch: [{}/{}] Acc@1:{:.2f}% Acc@5:{:.2f}% Tree_acc:{:.2f} NMI:{:.2f}'
+                                     .format(epoch, epochs, total_top1 / total_num * 100, total_top5 / total_num * 100, tree_acc_val, actuall_nmi))
+
 
     return total_top1 / total_num * 100, total_top5 / total_num * 100
 
@@ -116,6 +143,7 @@ if __name__ == '__main__':
     flops, params = clever_format([flops, params])
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-6)
+    print(model.parameters())
     c = len(memory_data.classes)
 
     # training loop
@@ -125,7 +153,7 @@ if __name__ == '__main__':
         os.mkdir('results')
     best_acc = 0.0
     for epoch in range(1, epochs + 1):
-        train_loss = train(model, train_loader, optimizer)
+        train_loss = train(model, train_loader, optimizer, epoch)
         results['train_loss'].append(train_loss)
         test_acc_1, test_acc_5 = test(model, memory_loader, test_loader)
         results['test_acc@1'].append(test_acc_1)
