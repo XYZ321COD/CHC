@@ -21,7 +21,7 @@ def probability_vec_with_level(feature, level):
 
 def tree_loss(tree_output1, tree_output2, batch_size, mask_for_level, mean_of_probs_per_level_per_epoch):
         ## TREE LOSS
-    loss_value = torch.tensor([0], dtype=torch.float32).cuda()
+    loss_value = torch.tensor([0], dtype=torch.float32, requires_grad=True).cuda()
 
     labels = torch.cat([torch.arange(batch_size) for i in range(2)], dim=0)
     labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
