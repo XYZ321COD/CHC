@@ -13,6 +13,8 @@ from model import Model
 from metrics import tree_acc
 import numpy
 from sklearn.metrics import normalized_mutual_info_score
+from torch.utils.tensorboard import SummaryWriter
+import logging
 
 
 # train for one epoch to learn unique features
@@ -20,6 +22,7 @@ def train(net, data_loader, train_optimizer, epoch):
     mean_of_probs_per_level_per_epoch = {level: torch.zeros(2**level).cuda() for level in range(1, 5)}
     net.train()
     total_loss, total_num, train_bar = 0.0, 0, tqdm(data_loader)
+    total_tree_loss, total_reg_loss, total_simclr_loss = 0.0, 0.0, 0.0
     for pos_1, pos_2, target in train_bar:
         pos_1, pos_2 = pos_1.cuda(non_blocking=True), pos_2.cuda(non_blocking=True)
         feature_1, out_1, tree_output1 = net(pos_1)
@@ -35,18 +38,21 @@ def train(net, data_loader, train_optimizer, epoch):
         pos_sim = torch.exp(torch.sum(out_1 * out_2, dim=-1) / temperature)
         # [2*B]
         pos_sim = torch.cat([pos_sim, pos_sim], dim=0)
-        loss = (- torch.log(pos_sim / sim_matrix.sum(dim=-1))).mean()
+        loss_simclr = (- torch.log(pos_sim / sim_matrix.sum(dim=-1))).mean()
         ### TREE LOSS
         tree_loss_value = tree_loss(tree_output1, tree_output2, batch_size, net.masks_for_level, mean_of_probs_per_level_per_epoch)
         regularization_loss_value = regularization_loss(tree_output1, tree_output2, net.masks_for_level)
         ##
         ##       
         train_optimizer.zero_grad()
-        loss = loss + tree_loss_value + (2**(-4)*regularization_loss_value)
+        loss = loss_simclr + tree_loss_value + (2**(-4)*regularization_loss_value)
         loss.backward()
         train_optimizer.step()
 
         total_num += batch_size
+        total_tree_loss += tree_loss_value.item() * batch_size
+        total_reg_loss += regularization_loss_value.item() * batch_size
+        total_simclr_loss += loss_simclr.item() * batch_size
         total_loss += loss.item() * batch_size
         train_bar.set_description('Train Epoch: [{}/{}] Loss: {:.4f}'.format(epoch, epochs, total_loss / total_num))
 
@@ -56,7 +62,7 @@ def train(net, data_loader, train_optimizer, epoch):
         test = torch.where(x > 0.0, x, 1.0) 
         net.masks_for_level[4][torch.argmin(test)] = 0
         print(net.masks_for_level[4])
-    return total_loss / total_num
+    return total_loss / total_num, total_tree_loss / total_num, total_simclr_loss / total_num, total_reg_loss / total_num
 
 # test for one epoch, use weighted knn to find the most similar images' label to assign the test image
 def test(net, memory_data_loader, test_data_loader):
@@ -112,7 +118,7 @@ def test(net, memory_data_loader, test_data_loader):
                                      .format(epoch, epochs, total_top1 / total_num * 100, total_top5 / total_num * 100, tree_acc_val, actuall_nmi))
 
 
-    return total_top1 / total_num * 100, total_top5 / total_num * 100
+    return total_top1 / total_num * 100, total_top5 / total_num * 100, tree_acc_val, actuall_nmi
 
 
 if __name__ == '__main__':
@@ -122,6 +128,7 @@ if __name__ == '__main__':
     parser.add_argument('--k', default=200, type=int, help='Top k most similar images used to predict the label')
     parser.add_argument('--batch_size', default=512, type=int, help='Number of images in each mini-batch')
     parser.add_argument('--epochs', default=500, type=int, help='Number of sweeps over the dataset to train')
+    parser.add_argument('--load_model', default=False, action="store_true")
 
     # args parse
     args = parser.parse_args()
@@ -137,8 +144,11 @@ if __name__ == '__main__':
     test_data = utils.CIFAR10Pair(root='data', train=False, transform=utils.test_transform, download=True)
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
 
+    # logger
+    writer = SummaryWriter()
+    logging.basicConfig(filename=os.path.join(writer.log_dir, 'training.log'), level=logging.DEBUG)
     # model setup and optimizer config
-    model = Model(feature_dim).cuda()
+    model = Model(feature_dim, args=args).cuda()
     flops, params = profile(model, inputs=(torch.randn(1, 3, 32, 32).cuda(),))
     flops, params = clever_format([flops, params])
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
@@ -147,20 +157,32 @@ if __name__ == '__main__':
     c = len(memory_data.classes)
 
     # training loop
-    results = {'train_loss': [], 'test_acc@1': [], 'test_acc@5': []}
+    results = {'train_loss': [], 'test_acc@1': [], 'test_acc@5': [],
+                'tree_loss_train': [], 'reg_loss_train' : [], 'simclr_loss_train': [],
+                 'tree_acc': [], 'nmi': []}
     save_name_pre = '{}_{}_{}_{}_{}'.format(feature_dim, temperature, k, batch_size, epochs)
     if not os.path.exists('results'):
         os.mkdir('results')
-    best_acc = 0.0
+    best_nmi = 0.0
     for epoch in range(1, epochs + 1):
-        train_loss = train(model, train_loader, optimizer, epoch)
-        results['train_loss'].append(train_loss)
-        test_acc_1, test_acc_5 = test(model, memory_loader, test_loader)
+        total_loss, tree_loss_train, reg_loss_train, simclr_loss_train = train(model, train_loader, optimizer, epoch)
+        results['train_loss'].append(total_loss)
+        results['tree_loss_train'].append(tree_loss_train)
+        results['reg_loss_train'].append(reg_loss_train)
+        results['simclr_loss_train'].append(simclr_loss_train)
+
+        test_acc_1, test_acc_5, tree_acc_val, nmi = test(model, memory_loader, test_loader)
         results['test_acc@1'].append(test_acc_1)
         results['test_acc@5'].append(test_acc_5)
+        results['tree_acc'].append(tree_acc_val)
+        results['nmi'].append(nmi)
+        writer.add_scalar('loss tree', tree_loss_train, global_step=epoch)
+        writer.add_scalar('nmi', nmi, global_step=epoch)
+        writer.add_scalar('tree_acc', tree_acc_val, global_step=epoch)
+
         # save statistics
         data_frame = pd.DataFrame(data=results, index=range(1, epoch + 1))
-        data_frame.to_csv('results/{}_statistics.csv'.format(save_name_pre), index_label='epoch')
-        if test_acc_1 > best_acc:
-            best_acc = test_acc_1
+        data_frame.to_csv(os.path.join(writer.log_dir, '{}_statistics.csv'.format(save_name_pre)), index_label='epoch')
+        if nmi > best_nmi:
+            best_nmi = nmi
             torch.save(model.state_dict(), 'results/{}_model.pth'.format(save_name_pre))
