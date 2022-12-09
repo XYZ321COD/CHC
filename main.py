@@ -45,7 +45,10 @@ def train(net, data_loader, train_optimizer, epoch):
         ##
         ##       
         train_optimizer.zero_grad()
-        loss = loss_simclr + tree_loss_value + (2**(-4)*regularization_loss_value)
+        if epoch > 1000:
+            loss = loss_simclr + tree_loss_value + (2**(-4)*regularization_loss_value)
+        else:
+            loss = loss_simclr
         loss.backward()
         train_optimizer.step()
 
@@ -56,7 +59,7 @@ def train(net, data_loader, train_optimizer, epoch):
         total_loss += loss.item() * batch_size
         train_bar.set_description('Train Epoch: [{}/{}] Loss: {:.4f}'.format(epoch, epochs, total_loss / total_num))
 
-    if epoch <= 6:
+    if epoch > 1050 and epoch <= 1056:
         x = mean_of_probs_per_level_per_epoch[4]/ len(data_loader)
         x = x.double()
         test = torch.where(x > 0.0, x, 1.0) 
@@ -129,19 +132,21 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', default=512, type=int, help='Number of images in each mini-batch')
     parser.add_argument('--epochs', default=500, type=int, help='Number of sweeps over the dataset to train')
     parser.add_argument('--load_model', default=False, action="store_true")
-
+    parser.add_argument('--cc', default=False, action="store_true")
     # args parse
     args = parser.parse_args()
     feature_dim, temperature, k = args.feature_dim, args.temperature, args.k
     batch_size, epochs = args.batch_size, args.epochs
 
     # data prepare
-    train_data = utils.CIFAR10Pair(root='data', train=True, transform=utils.train_transform, download=True)
+    train_data , memory_data, test_data = utils.get_contrastive_dataset('cifar10', args)
+
+    # train_data = utils.CIFAR10Pair(root='data', train=True, transform=utils.train_transform, download=True)
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True,
                               drop_last=True)
-    memory_data = utils.CIFAR10Pair(root='data', train=True, transform=utils.test_transform, download=True)
+    # memory_data = utils.CIFAR10Pair(root='data', train=True, transform=utils.test_transform, download=True)
     memory_loader = DataLoader(memory_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
-    test_data = utils.CIFAR10Pair(root='data', train=False, transform=utils.test_transform, download=True)
+    # test_data = utils.CIFAR10Pair(root='data', train=False, transform=utils.test_transform, download=True)
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
 
     # logger
@@ -150,6 +155,9 @@ if __name__ == '__main__':
     # model setup and optimizer config
     model = Model(feature_dim, args=args).cuda()
     flops, params = profile(model, inputs=(torch.randn(1, 3, 32, 32).cuda(),))
+    if args.cc:
+        flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).cuda(),))
+
     flops, params = clever_format([flops, params])
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-6)
@@ -186,3 +194,7 @@ if __name__ == '__main__':
         if nmi > best_nmi:
             best_nmi = nmi
             torch.save(model.state_dict(), 'results/{}_model.pth'.format(save_name_pre))
+
+    torch.save(model.state_dict(), 'results/{}_model.pth'.format('last_epoch_model'))
+    torch.save(model.masks_for_level, 'results/last_epoch_model_masks.pth')
+    
