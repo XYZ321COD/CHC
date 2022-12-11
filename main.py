@@ -73,45 +73,50 @@ def test(net, memory_data_loader, test_data_loader):
     total_top1, total_top5, total_num, feature_bank = 0.0, 0.0, 0, []
     histograms_for_each_label_per_level = {4 : numpy.array([numpy.zeros_like(torch.empty(2**4)) for i in range(0, 10)])}
     labels, predictions = [], []
-    if not hasattr(memory_data_loader.dataset, 'targets'):
-        return 0.0, 0.0, 0.0, 0.0
     with torch.no_grad():
         # generate feature bank
-        for data, _, target in tqdm(memory_data_loader, desc='Feature extracting'):
-            feature, out, tree_output = net(data.cuda(non_blocking=True))
-            feature_bank.append(feature)
-        # [D, N]
-        feature_bank = torch.cat(feature_bank, dim=0).t().contiguous()
-        # [N]
-        feature_labels = torch.tensor(memory_data_loader.dataset.targets, device=feature_bank.device)
-        # loop test data to predict the label by weighted knn search
+        if hasattr(memory_data_loader.dataset, 'targets'):
+            for data, _, target in tqdm(memory_data_loader, desc='Feature extracting'):
+                feature, out, tree_output = net(data.cuda(non_blocking=True))
+                feature_bank.append(feature)
+            # [D, N]
+            feature_bank = torch.cat(feature_bank, dim=0).t().contiguous()
+            # [N]
+            feature_labels = torch.tensor(memory_data_loader.dataset.targets, device=feature_bank.device)
+            # loop test data to predict the label by weighted knn search
         test_bar = tqdm(test_data_loader)
         for data, _, target in test_bar:
             data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
             feature, out, tree_output = net(data)
             total_num += data.size(0)
             # compute cos similarity between each feature vector and feature bank ---> [B, N]
-            sim_matrix = torch.mm(feature, feature_bank)
-            # [B, K]
-            sim_weight, sim_indices = sim_matrix.topk(k=k, dim=-1)
-            # [B, K]
-            sim_labels = torch.gather(feature_labels.expand(data.size(0), -1), dim=-1, index=sim_indices)
-            sim_weight = (sim_weight / temperature).exp()
+            if hasattr(memory_data_loader.dataset, 'targets'):
+                sim_matrix = torch.mm(feature, feature_bank)
+                # [B, K]
+                sim_weight, sim_indices = sim_matrix.topk(k=k, dim=-1)
+                # [B, K]
+                sim_labels = torch.gather(feature_labels.expand(data.size(0), -1), dim=-1, index=sim_indices)
+                sim_weight = (sim_weight / temperature).exp()
 
-            # counts for each class
-            one_hot_label = torch.zeros(data.size(0) * k, c, device=sim_labels.device)
-            # [B*K, C]
-            one_hot_label = one_hot_label.scatter(dim=-1, index=sim_labels.view(-1, 1), value=1.0)
-            # weighted score ---> [B, C]
-            pred_scores = torch.sum(one_hot_label.view(data.size(0), -1, c) * sim_weight.unsqueeze(dim=-1), dim=1)
+                # counts for each class
+                one_hot_label = torch.zeros(data.size(0) * k, c, device=sim_labels.device)
+                # [B*K, C]
+                one_hot_label = one_hot_label.scatter(dim=-1, index=sim_labels.view(-1, 1), value=1.0)
+                # weighted score ---> [B, C]
+                pred_scores = torch.sum(one_hot_label.view(data.size(0), -1, c) * sim_weight.unsqueeze(dim=-1), dim=1)
 
-            pred_labels = pred_scores.argsort(dim=-1, descending=True)
-            total_top1 += torch.sum((pred_labels[:, :1] == target.unsqueeze(dim=-1)).any(dim=-1).float()).item()
-            total_top5 += torch.sum((pred_labels[:, :5] == target.unsqueeze(dim=-1)).any(dim=-1).float()).item()
+                pred_labels = pred_scores.argsort(dim=-1, descending=True)
+                total_top1 += torch.sum((pred_labels[:, :1] == target.unsqueeze(dim=-1)).any(dim=-1).float()).item()
+                total_top5 += torch.sum((pred_labels[:, :5] == target.unsqueeze(dim=-1)).any(dim=-1).float()).item()
 
             ## TREE PART
             prob_features = probability_vec_with_level(tree_output, 4)
             prob_features = net.masks_for_level[4] * prob_features
+            if hasattr(test_data_loader.dataset, 'subset_index_attr'):
+                new_taget = []
+                for elem in target:
+                    new_taget.append(test_data_loader.dataset.subset_index_attr.index(elem))
+                target = torch.Tensor(new_taget).to(dtype=torch.int64)
             for prediction, label in zip(torch.argmax(prob_features.detach(), dim=1), target.detach()):
                 predictions.append(prediction.item())
                 labels.append(label.item())

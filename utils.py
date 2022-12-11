@@ -55,7 +55,7 @@ def get_transforms(name, args):
                     transforms.ToTensor(),
                     transforms.Normalize([0.4914, 0.4822, 0.4465], [0.2471, 0.2435, 0.2616])]),
         'imagenet10': transforms.Compose([
-                        transforms.Resize(224),
+                        transforms.Resize((224, 224)),
                         transforms.ToTensor(),
                         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]),
         'mnist': transforms.Compose([
@@ -76,7 +76,7 @@ def get_contrastive_dataset(name, args):
     train_data = {
         'cifar10': CIFAR10Pair(root='data', train=True, transform=get_transforms('cifar10', args)[0], download=True),
         'stl10': STL10Pair(root='data', split='unlabeled', transform=get_transforms('stl10', args)[0], download=True),
-        # 'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenet10', args)[0]), args), 
+        'imagenet10': filter_ImageNet(ImageNetPair('C:/Projects/DS-Net/Datasets', split='train', transform=get_transforms('imagenet10', args)[0]), args), 
         'mnist': MNISTPair(root='data', train=True, transform=get_transforms('mnist', args)[0], download=True),
         'fmnist': FashionMNISTPair(root='data', train=True, transform=get_transforms('fmnist', args)[0], download=True)
 
@@ -85,7 +85,7 @@ def get_contrastive_dataset(name, args):
     test_data = {
         'cifar10': CIFAR10Pair(root='data', train=False, transform=get_transforms('cifar10', args)[1], download=True),
         'stl10': STL10Pair(root='data', split='test', transform=get_transforms('stl10', args)[1], download=True),
-        # 'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='val', transform=get_transforms('imagenet10', args)[1]), args),
+        'imagenet10': filter_ImageNet(ImageNetPair('C:/Projects/DS-Net/Datasets', split='val', transform=get_transforms('imagenet10', args)[1]), args),
         'mnist': MNISTPair(root='data', train=False, transform=get_transforms('mnist', args)[1], download=True),
         'fmnist': FashionMNISTPair(root='data', train=False, transform=get_transforms('fmnist', args)[1], download=True)
 
@@ -97,7 +97,7 @@ def get_contrastive_dataset(name, args):
     memory_data = {
         'cifar10': CIFAR10Pair(root='data', train=True, transform=get_transforms('cifar10', args)[1], download=True),
         'stl10': STL10Pair(root='data', split='unlabeled', transform=get_transforms('stl10', args)[1], download=True),
-        # 'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenet10', args)[1]), args),
+        'imagenet10': filter_ImageNet(ImageNetPair('C:/Projects/DS-Net/Datasets', split='train', transform=get_transforms('imagenet10', args)[1]), args),
         'mnist': MNISTPair(root='data', train=True, transform=get_transforms('mnist', args)[1], download=True),
         'fmnist': FashionMNISTPair(root='data', train=True, transform=get_transforms('fmnist', args)[1], download=True)
 
@@ -175,6 +175,7 @@ def filter_ImageNet(image_dataset, args):
     class_names = image_dataset.classes
     classes = tuple([class_names[c][0] for c in subset_idx])
     image_dataset = Subset(image_dataset, subset_indices)
+    image_dataset.subset_index_attr = subset_idx
     return image_dataset
 
 class ImageNetPair(ImageNet):
@@ -190,7 +191,6 @@ class ImageNetPair(ImageNet):
 
         if self.target_transform is not None:
             target = self.target_transform(target)
-
         return pos_1, pos_2, target
 
 
