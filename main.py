@@ -166,7 +166,7 @@ if __name__ == '__main__':
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
     optimizer = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-6)
     print(model.parameters())
-    c = len(memory_data.classes)
+    # c = len(memory_data.classes)
 
     # training loop
     results = {'train_loss': [], 'test_acc@1': [], 'test_acc@5': [],
