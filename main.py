@@ -136,7 +136,7 @@ if __name__ == '__main__':
     parser.add_argument('--load_model', default=False, action="store_true")
     parser.add_argument('--cc_model', default=False, action="store_true")
     parser.add_argument('--cc_data', default=False, action="store_true")
-    parser.add_argument('--dataset-name', default='cifar10', choices=['stl10', 'cifar10'])
+    parser.add_argument('--dataset-name', default='cifar10', choices=['stl10', 'cifar10', 'imagenet10', 'mnist', 'fmnist'])
     # args parse
     args = parser.parse_args()
     feature_dim, temperature, k = args.feature_dim, args.temperature, args.k
@@ -146,12 +146,12 @@ if __name__ == '__main__':
     train_data , memory_data, test_data = utils.get_contrastive_dataset(args.dataset_name, args)
 
     # train_data = utils.CIFAR10Pair(root='data', train=True, transform=utils.train_transform, download=True)
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=10, pin_memory=True,
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True,
                               drop_last=True)
     # memory_data = utils.CIFAR10Pair(root='data', train=True, transform=utils.test_transform, download=True)
-    memory_loader = DataLoader(memory_data, batch_size=batch_size, shuffle=False, num_workers=10, pin_memory=True)
+    memory_loader = DataLoader(memory_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
     # test_data = utils.CIFAR10Pair(root='data', train=False, transform=utils.test_transform, download=True)
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=10, pin_memory=True)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
 
     # logger
     writer = SummaryWriter()
