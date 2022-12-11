@@ -76,7 +76,7 @@ def get_contrastive_dataset(name, args):
     train_data = {
         'cifar10': CIFAR10Pair(root='data', train=True, transform=get_transforms('cifar10', args)[0], download=True),
         'stl10': STL10Pair(root='data', split='unlabeled', transform=get_transforms('stl10', args)[0], download=True),
-        'imagenet10': filter_ImageNet(ImageNetPair('C:/Projects/DS-Net/Datasets', split='train', transform=get_transforms('imagenet10', args)[0]), args), 
+        'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenet10', args)[0]), args), 
         'mnist': MNISTPair(root='data', train=True, transform=get_transforms('mnist', args)[0], download=True),
         'fmnist': FashionMNISTPair(root='data', train=True, transform=get_transforms('fmnist', args)[0], download=True)
 
@@ -85,7 +85,7 @@ def get_contrastive_dataset(name, args):
     test_data = {
         'cifar10': CIFAR10Pair(root='data', train=False, transform=get_transforms('cifar10', args)[1], download=True),
         'stl10': STL10Pair(root='data', split='test', transform=get_transforms('stl10', args)[1], download=True),
-        'imagenet10': filter_ImageNet(ImageNetPair('C:/Projects/DS-Net/Datasets', split='val', transform=get_transforms('imagenet10', args)[1]), args),
+        'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='val', transform=get_transforms('imagenet10', args)[1]), args),
         'mnist': MNISTPair(root='data', train=False, transform=get_transforms('mnist', args)[1], download=True),
         'fmnist': FashionMNISTPair(root='data', train=False, transform=get_transforms('fmnist', args)[1], download=True)
 
@@ -97,7 +97,7 @@ def get_contrastive_dataset(name, args):
     memory_data = {
         'cifar10': CIFAR10Pair(root='data', train=True, transform=get_transforms('cifar10', args)[1], download=True),
         'stl10': STL10Pair(root='data', split='unlabeled', transform=get_transforms('stl10', args)[1], download=True),
-        'imagenet10': filter_ImageNet(ImageNetPair('C:/Projects/DS-Net/Datasets', split='train', transform=get_transforms('imagenet10', args)[1]), args),
+        'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenet10', args)[1]), args),
         'mnist': MNISTPair(root='data', train=True, transform=get_transforms('mnist', args)[1], download=True),
         'fmnist': FashionMNISTPair(root='data', train=True, transform=get_transforms('fmnist', args)[1], download=True)
 
