@@ -8,8 +8,7 @@ class Model(nn.Module):
     def __init__(self, feature_dim=128, level_number=4, args=None):
         super(Model, self).__init__()
         self.f = []
-        print(args.cc)
-        if args.cc:
+        if args.cc_model:
             for name, module in resnet34().named_children():
                 if not isinstance(module, nn.Linear):
                     self.f.append(module)

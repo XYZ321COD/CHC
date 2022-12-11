@@ -73,6 +73,8 @@ def test(net, memory_data_loader, test_data_loader):
     total_top1, total_top5, total_num, feature_bank = 0.0, 0.0, 0, []
     histograms_for_each_label_per_level = {4 : numpy.array([numpy.zeros_like(torch.empty(2**4)) for i in range(0, 10)])}
     labels, predictions = [], []
+    if not hasattr(memory_data_loader.dataset, 'targets'):
+        return 0.0, 0.0, 0.0, 0.0
     with torch.no_grad():
         # generate feature bank
         for data, _, target in tqdm(memory_data_loader, desc='Feature extracting'):
@@ -132,22 +134,24 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', default=512, type=int, help='Number of images in each mini-batch')
     parser.add_argument('--epochs', default=500, type=int, help='Number of sweeps over the dataset to train')
     parser.add_argument('--load_model', default=False, action="store_true")
-    parser.add_argument('--cc', default=False, action="store_true")
+    parser.add_argument('--cc_model', default=False, action="store_true")
+    parser.add_argument('--cc_data', default=False, action="store_true")
+    parser.add_argument('--dataset-name', default='cifar10', choices=['stl10', 'cifar10'])
     # args parse
     args = parser.parse_args()
     feature_dim, temperature, k = args.feature_dim, args.temperature, args.k
     batch_size, epochs = args.batch_size, args.epochs
 
     # data prepare
-    train_data , memory_data, test_data = utils.get_contrastive_dataset('cifar10', args)
+    train_data , memory_data, test_data = utils.get_contrastive_dataset(args.dataset_name, args)
 
     # train_data = utils.CIFAR10Pair(root='data', train=True, transform=utils.train_transform, download=True)
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True,
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=10, pin_memory=True,
                               drop_last=True)
     # memory_data = utils.CIFAR10Pair(root='data', train=True, transform=utils.test_transform, download=True)
-    memory_loader = DataLoader(memory_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
+    memory_loader = DataLoader(memory_data, batch_size=batch_size, shuffle=False, num_workers=10, pin_memory=True)
     # test_data = utils.CIFAR10Pair(root='data', train=False, transform=utils.test_transform, download=True)
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=10, pin_memory=True)
 
     # logger
     writer = SummaryWriter()
@@ -155,7 +159,7 @@ if __name__ == '__main__':
     # model setup and optimizer config
     model = Model(feature_dim, args=args).cuda()
     flops, params = profile(model, inputs=(torch.randn(1, 3, 32, 32).cuda(),))
-    if args.cc:
+    if args.cc_data:
         flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).cuda(),))
 
     flops, params = clever_format([flops, params])
