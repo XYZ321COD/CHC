@@ -28,6 +28,15 @@ def get_transforms(name, args):
                         transforms.RandomGrayscale(p=0.2),
                         transforms.ToTensor(),
                         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]),
+
+        'imagenetdogs': transforms.Compose([
+                        transforms.RandomResizedCrop(224),
+                        transforms.RandomHorizontalFlip(p=0.5),
+                        transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+                        transforms.RandomGrayscale(p=0.2),
+                        transforms.ToTensor(),
+                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]),
+
         'mnist': transforms.Compose([
                         transforms.RandomResizedCrop(28),
                         transforms.RandomHorizontalFlip(p=0.5),
@@ -58,6 +67,10 @@ def get_transforms(name, args):
                         transforms.Resize((224, 224)),
                         transforms.ToTensor(),
                         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]),
+        'imagenetdogs': transforms.Compose([
+                        transforms.Resize((224, 224)),
+                        transforms.ToTensor(),
+                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]),
         'mnist': transforms.Compose([
                         transforms.Resize(28),
                         transforms.ToTensor(),
@@ -77,6 +90,7 @@ def get_contrastive_dataset(name, args):
         'cifar10': CIFAR10Pair(root='data', train=True, transform=get_transforms('cifar10', args)[0], download=True),
         'stl10': STL10Pair(root='data', split='unlabeled', transform=get_transforms('stl10', args)[0], download=True),
         'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenet10', args)[0]), args), 
+        'imagenetdogs': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenetdogs', args)[0]), args), 
         'mnist': MNISTPair(root='data', train=True, transform=get_transforms('mnist', args)[0], download=True),
         'fmnist': FashionMNISTPair(root='data', train=True, transform=get_transforms('fmnist', args)[0], download=True)
 
@@ -86,6 +100,7 @@ def get_contrastive_dataset(name, args):
         'cifar10': CIFAR10Pair(root='data', train=False, transform=get_transforms('cifar10', args)[1], download=True),
         'stl10': STL10Pair(root='data', split='test', transform=get_transforms('stl10', args)[1], download=True),
         'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='val', transform=get_transforms('imagenet10', args)[1]), args),
+        'imagenetdogs': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='val', transform=get_transforms('imagenetdogs', args)[1]), args),
         'mnist': MNISTPair(root='data', train=False, transform=get_transforms('mnist', args)[1], download=True),
         'fmnist': FashionMNISTPair(root='data', train=False, transform=get_transforms('fmnist', args)[1], download=True)
 
@@ -98,6 +113,7 @@ def get_contrastive_dataset(name, args):
         'cifar10': CIFAR10Pair(root='data', train=True, transform=get_transforms('cifar10', args)[1], download=True),
         'stl10': STL10Pair(root='data', split='unlabeled', transform=get_transforms('stl10', args)[1], download=True),
         'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenet10', args)[1]), args),
+        'imagenetdogs': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenetdogs', args)[1]), args),
         'mnist': MNISTPair(root='data', train=True, transform=get_transforms('mnist', args)[1], download=True),
         'fmnist': FashionMNISTPair(root='data', train=True, transform=get_transforms('fmnist', args)[1], download=True)
 

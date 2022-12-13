@@ -91,6 +91,9 @@ def test(net, memory_data_loader, test_data_loader):
             total_num += data.size(0)
             # compute cos similarity between each feature vector and feature bank ---> [B, N]
             if hasattr(memory_data_loader.dataset, 'targets'):
+                
+                c = len(memory_data.classes)
+
                 sim_matrix = torch.mm(feature, feature_bank)
                 # [B, K]
                 sim_weight, sim_indices = sim_matrix.topk(k=k, dim=-1)
@@ -117,6 +120,7 @@ def test(net, memory_data_loader, test_data_loader):
                 for elem in target:
                     new_taget.append(test_data_loader.dataset.subset_index_attr.index(elem))
                 target = torch.Tensor(new_taget).to(dtype=torch.int64)
+                
             for prediction, label in zip(torch.argmax(prob_features.detach(), dim=1), target.detach()):
                 predictions.append(prediction.item())
                 labels.append(label.item())
@@ -141,7 +145,7 @@ if __name__ == '__main__':
     parser.add_argument('--load_model', default=False, action="store_true")
     parser.add_argument('--cc_model', default=False, action="store_true")
     parser.add_argument('--cc_data', default=False, action="store_true")
-    parser.add_argument('--dataset-name', default='cifar10', choices=['stl10', 'cifar10', 'imagenet10', 'mnist', 'fmnist'])
+    parser.add_argument('--dataset-name', default='cifar10', choices=['stl10', 'cifar10', 'imagenet10', 'mnist', 'fmnist', 'imagenetdogs'])
     # args parse
     args = parser.parse_args()
     feature_dim, temperature, k = args.feature_dim, args.temperature, args.k
