@@ -18,8 +18,8 @@ import logging
 
 
 # train for one epoch to learn unique features
-def train(net, data_loader, train_optimizer, epoch):
-    mean_of_probs_per_level_per_epoch = {level: torch.zeros(2**level).cuda() for level in range(1, 5)}
+def train(net, data_loader, train_optimizer, epoch, args):
+    mean_of_probs_per_level_per_epoch = {level: torch.zeros(2**level).cuda() for level in range(1, args.level_number+1)}
     net.train()
     total_loss, total_num, train_bar = 0.0, 0, tqdm(data_loader)
     total_tree_loss, total_reg_loss, total_simclr_loss = 0.0, 0.0, 0.0
@@ -40,13 +40,13 @@ def train(net, data_loader, train_optimizer, epoch):
         pos_sim = torch.cat([pos_sim, pos_sim], dim=0)
         loss_simclr = (- torch.log(pos_sim / sim_matrix.sum(dim=-1))).mean()
         ### TREE LOSS
-        tree_loss_value = tree_loss(tree_output1, tree_output2, batch_size, net.masks_for_level, mean_of_probs_per_level_per_epoch)
-        regularization_loss_value = regularization_loss(tree_output1, tree_output2, net.masks_for_level)
+        tree_loss_value = tree_loss(tree_output1, tree_output2, batch_size, net.masks_for_level, mean_of_probs_per_level_per_epoch, args)
+        regularization_loss_value = regularization_loss(tree_output1, tree_output2, net.masks_for_level, args)
         ##
         ##       
         train_optimizer.zero_grad()
         if epoch > 1000:
-            loss = loss_simclr + tree_loss_value + (2**(-4)*regularization_loss_value)
+            loss = loss_simclr + tree_loss_value + (2**(-args.level_number)*regularization_loss_value)
         else:
             loss = loss_simclr
         loss.backward()
@@ -59,19 +59,19 @@ def train(net, data_loader, train_optimizer, epoch):
         total_loss += loss.item() * batch_size
         train_bar.set_description('Train Epoch: [{}/{}] Loss: {:.4f}'.format(epoch, epochs, total_loss / total_num))
 
-    if epoch > 1050 and epoch <= 1056:
-        x = mean_of_probs_per_level_per_epoch[4]/ len(data_loader)
+    if epoch > 1050 and epoch <= 1062:
+        x = mean_of_probs_per_level_per_epoch[args.level_number]/ len(data_loader)
         x = x.double()
         test = torch.where(x > 0.0, x, 1.0) 
-        net.masks_for_level[4][torch.argmin(test)] = 0
-        print(net.masks_for_level[4])
+        net.masks_for_level[args.level_number][torch.argmin(test)] = 0
+        print(net.masks_for_level[args.level_number])
     return total_loss / total_num, total_tree_loss / total_num, total_simclr_loss / total_num, total_reg_loss / total_num
 
 # test for one epoch, use weighted knn to find the most similar images' label to assign the test image
-def test(net, memory_data_loader, test_data_loader):
+def test(net, memory_data_loader, test_data_loader, args):
     net.eval()
     total_top1, total_top5, total_num, feature_bank = 0.0, 0.0, 0, []
-    histograms_for_each_label_per_level = {4 : numpy.array([numpy.zeros_like(torch.empty(2**4)) for i in range(0, 10)])}
+    histograms_for_each_label_per_level = {args.level_number : numpy.array([numpy.zeros_like(torch.empty(2**args.level_number)) for i in range(0, 10)])}
     labels, predictions = [], []
     with torch.no_grad():
         # generate feature bank
@@ -113,8 +113,8 @@ def test(net, memory_data_loader, test_data_loader):
                 total_top5 += torch.sum((pred_labels[:, :5] == target.unsqueeze(dim=-1)).any(dim=-1).float()).item()
 
             ## TREE PART
-            prob_features = probability_vec_with_level(tree_output, 4)
-            prob_features = net.masks_for_level[4] * prob_features
+            prob_features = probability_vec_with_level(tree_output, args.level_number)
+            prob_features = net.masks_for_level[args.level_number] * prob_features
             if hasattr(test_data_loader.dataset, 'subset_index_attr'):
                 new_taget = []
                 for elem in target:
@@ -124,15 +124,13 @@ def test(net, memory_data_loader, test_data_loader):
             for prediction, label in zip(torch.argmax(prob_features.detach(), dim=1), target.detach()):
                 predictions.append(prediction.item())
                 labels.append(label.item())
-                histograms_for_each_label_per_level[4][label.item()][prediction.item()] += 1
-            df_cm = pd.DataFrame(histograms_for_each_label_per_level[4], index = [class1 for class1 in range(0,10)], columns = [i for i in range(0,2**4)])
-            tree_acc_val = tree_acc(df_cm)
+                histograms_for_each_label_per_level[args.level_number][label.item()][prediction.item()] += 1
             actuall_nmi = normalized_mutual_info_score(labels, predictions)
-            test_bar.set_description('Test Epoch: [{}/{}] Acc@1:{:.2f}% Acc@5:{:.2f}% Tree_acc:{:.2f} NMI:{:.2f}'
-                                     .format(epoch, epochs, total_top1 / total_num * 100, total_top5 / total_num * 100, tree_acc_val, actuall_nmi))
+            test_bar.set_description('Test Epoch: [{}/{}] Acc@1:{:.2f}% Acc@5:{:.2f}% NMI:{:.2f}'
+                                     .format(epoch, epochs, total_top1 / total_num * 100, total_top5 / total_num * 100, actuall_nmi))
 
 
-    return total_top1 / total_num * 100, total_top5 / total_num * 100, tree_acc_val, actuall_nmi
+    return total_top1 / total_num * 100, total_top5 / total_num * 100, actuall_nmi
 
 
 if __name__ == '__main__':
@@ -145,7 +143,8 @@ if __name__ == '__main__':
     parser.add_argument('--load_model', default=False, action="store_true")
     parser.add_argument('--cc_model', default=False, action="store_true")
     parser.add_argument('--cc_data', default=False, action="store_true")
-    parser.add_argument('--dataset-name', default='cifar10', choices=['stl10', 'cifar10', 'imagenet10', 'mnist', 'fmnist', 'imagenetdogs'])
+    parser.add_argument('--dataset-name', default='cifar10', choices=['stl10', 'cifar10', 'cifar100', 'imagenet10', 'mnist', 'fmnist', 'imagenetdogs'])
+    parser.add_argument('--level_number', default=4, type=int)
     # args parse
     args = parser.parse_args()
     feature_dim, temperature, k = args.feature_dim, args.temperature, args.k
@@ -166,7 +165,7 @@ if __name__ == '__main__':
     writer = SummaryWriter()
     logging.basicConfig(filename=os.path.join(writer.log_dir, 'training.log'), level=logging.DEBUG)
     # model setup and optimizer config
-    model = Model(feature_dim, args=args).cuda()
+    model = Model(feature_dim, args.level_number, args=args).cuda()
     flops, params = profile(model, inputs=(torch.randn(1, 3, 32, 32).cuda(),))
     if args.cc_data:
         flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).cuda(),))
@@ -180,26 +179,24 @@ if __name__ == '__main__':
     # training loop
     results = {'train_loss': [], 'test_acc@1': [], 'test_acc@5': [],
                 'tree_loss_train': [], 'reg_loss_train' : [], 'simclr_loss_train': [],
-                 'tree_acc': [], 'nmi': []}
+                  'nmi': []}
     save_name_pre = '{}_{}_{}_{}_{}'.format(feature_dim, temperature, k, batch_size, epochs)
     if not os.path.exists('results'):
         os.mkdir('results')
     best_nmi = 0.0
     for epoch in range(1, epochs + 1):
-        total_loss, tree_loss_train, reg_loss_train, simclr_loss_train = train(model, train_loader, optimizer, epoch)
+        total_loss, tree_loss_train, reg_loss_train, simclr_loss_train = train(model, train_loader, optimizer, epoch, args)
         results['train_loss'].append(total_loss)
         results['tree_loss_train'].append(tree_loss_train)
         results['reg_loss_train'].append(reg_loss_train)
         results['simclr_loss_train'].append(simclr_loss_train)
 
-        test_acc_1, test_acc_5, tree_acc_val, nmi = test(model, memory_loader, test_loader)
+        test_acc_1, test_acc_5, nmi = test(model, memory_loader, test_loader, args)
         results['test_acc@1'].append(test_acc_1)
         results['test_acc@5'].append(test_acc_5)
-        results['tree_acc'].append(tree_acc_val)
         results['nmi'].append(nmi)
         writer.add_scalar('loss tree', tree_loss_train, global_step=epoch)
         writer.add_scalar('nmi', nmi, global_step=epoch)
-        writer.add_scalar('tree_acc', tree_acc_val, global_step=epoch)
 
         # save statistics
         data_frame = pd.DataFrame(data=results, index=range(1, epoch + 1))

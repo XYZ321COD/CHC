@@ -33,7 +33,7 @@ class Model(nn.Module):
         if args.load_model:
             self.load_state_dict(torch.load('./pre-trained/128_0.5_200_128_1000_model.pth', map_location='cpu'), strict=False)
             print("Load the model")
-        self.masks_for_level = {level: torch.ones(2**level).cuda() for level in range(1, 4+1)}
+        self.masks_for_level = {level: torch.ones(2**level).cuda() for level in range(1, level_number+1)}
 
 
     def forward(self, x):
