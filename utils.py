@@ -3,6 +3,23 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10, STL10, ImageNet, MNIST, FashionMNIST
 from torch.utils.data import Subset
 import numpy as np
+import cv2
+
+class GaussianBlur:
+    def __init__(self, kernel_size, min=0.1, max=2.0):
+        self.min = min
+        self.max = max
+        self.kernel_size = kernel_size
+
+    def __call__(self, sample):
+        sample = np.array(sample)
+        prob = np.random.random_sample()
+        if prob < 0.5:
+            sigma = (self.max - self.min) * np.random.random_sample() + self.min
+            sample = cv2.GaussianBlur(sample, (self.kernel_size, self.kernel_size), sigma)
+        return sample
+
+
 
 def get_transforms(name, args):
     train_transforms = {
@@ -24,8 +41,9 @@ def get_transforms(name, args):
         'imagenet10': transforms.Compose([
                         transforms.RandomResizedCrop(224),
                         transforms.RandomHorizontalFlip(p=0.5),
-                        transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+                        transforms.RandomApply([transforms.ColorJitter(0.8, 0.8, 0.8, 0.2)], p=0.8),
                         transforms.RandomGrayscale(p=0.2),
+                        GaussianBlur(kernel_size=23),
                         transforms.ToTensor(),
                         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])]),
 
