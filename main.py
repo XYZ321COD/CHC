@@ -75,14 +75,15 @@ def test(net, memory_data_loader, test_data_loader):
     labels, predictions = [], []
     with torch.no_grad():
         # generate feature bank
-        if hasattr(memory_data_loader.dataset, 'targets'):
+        if hasattr(memory_data_loader.dataset, 'targets') or hasattr(memory_data_loader.dataset, 'labels'):
             for data, _, target in tqdm(memory_data_loader, desc='Feature extracting'):
                 feature, out, tree_output = net(data.cuda(non_blocking=True))
                 feature_bank.append(feature)
             # [D, N]
             feature_bank = torch.cat(feature_bank, dim=0).t().contiguous()
             # [N]
-            feature_labels = torch.tensor(memory_data_loader.dataset.targets, device=feature_bank.device)
+            mdl = memory_data_loader.dataset.targets if hasattr(memory_data_loader.dataset, 'targets') else memory_data_loader.dataset.labels
+            feature_labels = torch.tensor(mdl, device=feature_bank.device).long().to(device=feature_bank.device)
             # loop test data to predict the label by weighted knn search
         test_bar = tqdm(test_data_loader)
         for data, _, target in test_bar:
@@ -90,7 +91,7 @@ def test(net, memory_data_loader, test_data_loader):
             feature, out, tree_output = net(data)
             total_num += data.size(0)
             # compute cos similarity between each feature vector and feature bank ---> [B, N]
-            if hasattr(memory_data_loader.dataset, 'targets'):
+            if hasattr(memory_data_loader.dataset, 'targets') or hasattr(memory_data_loader.dataset, 'labels'):
                 
                 c = len(memory_data.classes)
 
@@ -124,15 +125,15 @@ def test(net, memory_data_loader, test_data_loader):
             for prediction, label in zip(torch.argmax(prob_features.detach(), dim=1), target.detach()):
                 predictions.append(prediction.item())
                 labels.append(label.item())
-                histograms_for_each_label_per_level[4][label.item()][prediction.item()] += 1
-            df_cm = pd.DataFrame(histograms_for_each_label_per_level[4], index = [class1 for class1 in range(0,10)], columns = [i for i in range(0,2**4)])
-            tree_acc_val = tree_acc(df_cm)
+                # histograms_for_each_label_per_level[4][label.item()][prediction.item()] += 1
+            # df_cm = pd.DataFrame(histograms_for_each_label_per_level[4], index = [class1 for class1 in range(0,10)], columns = [i for i in range(0,2**4)])
+            # tree_acc_val = tree_acc(df_cm)
             actuall_nmi = normalized_mutual_info_score(labels, predictions)
-            test_bar.set_description('Test Epoch: [{}/{}] Acc@1:{:.2f}% Acc@5:{:.2f}% Tree_acc:{:.2f} NMI:{:.2f}'
-                                     .format(epoch, epochs, total_top1 / total_num * 100, total_top5 / total_num * 100, tree_acc_val, actuall_nmi))
+            test_bar.set_description('Test Epoch: [{}/{}] Acc@1:{:.2f}% Acc@5:{:.2f}% NMI:{:.2f}'
+                                     .format(epoch, epochs, total_top1 / total_num * 100, total_top5 / total_num * 100, actuall_nmi))
 
 
-    return total_top1 / total_num * 100, total_top5 / total_num * 100, tree_acc_val, actuall_nmi
+    return total_top1 / total_num * 100, total_top5 / total_num * 100, actuall_nmi
 
 
 if __name__ == '__main__':
@@ -158,7 +159,7 @@ if __name__ == '__main__':
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True,
                               drop_last=True)
     # memory_data = utils.CIFAR10Pair(root='data', train=True, transform=utils.test_transform, download=True)
-    memory_loader = DataLoader(memory_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
+    memory_loader = DataLoader(memory_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True, drop_last=True)
     # test_data = utils.CIFAR10Pair(root='data', train=False, transform=utils.test_transform, download=True)
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
 
@@ -180,26 +181,27 @@ if __name__ == '__main__':
     # training loop
     results = {'train_loss': [], 'test_acc@1': [], 'test_acc@5': [],
                 'tree_loss_train': [], 'reg_loss_train' : [], 'simclr_loss_train': [],
-                 'tree_acc': [], 'nmi': []}
+                'nmi': []}
     save_name_pre = '{}_{}_{}_{}_{}'.format(feature_dim, temperature, k, batch_size, epochs)
     if not os.path.exists('results'):
         os.mkdir('results')
     best_nmi = 0.0
     for epoch in range(1, epochs + 1):
-        total_loss, tree_loss_train, reg_loss_train, simclr_loss_train = train(model, train_loader, optimizer, epoch)
+        if epoch > 2:
+            total_loss, tree_loss_train, reg_loss_train, simclr_loss_train = train(model, memory_loader, optimizer, epoch)
+        else:
+            total_loss, tree_loss_train, reg_loss_train, simclr_loss_train = train(model, train_loader, optimizer, epoch)
         results['train_loss'].append(total_loss)
         results['tree_loss_train'].append(tree_loss_train)
         results['reg_loss_train'].append(reg_loss_train)
         results['simclr_loss_train'].append(simclr_loss_train)
 
-        test_acc_1, test_acc_5, tree_acc_val, nmi = test(model, memory_loader, test_loader)
+        test_acc_1, test_acc_5, nmi = test(model, memory_loader, test_loader)
         results['test_acc@1'].append(test_acc_1)
         results['test_acc@5'].append(test_acc_5)
-        results['tree_acc'].append(tree_acc_val)
         results['nmi'].append(nmi)
         writer.add_scalar('loss tree', tree_loss_train, global_step=epoch)
         writer.add_scalar('nmi', nmi, global_step=epoch)
-        writer.add_scalar('tree_acc', tree_acc_val, global_step=epoch)
 
         # save statistics
         data_frame = pd.DataFrame(data=results, index=range(1, epoch + 1))
