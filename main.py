@@ -71,7 +71,7 @@ def train(net, data_loader, train_optimizer, epoch, args):
 def test(net, memory_data_loader, test_data_loader, args):
     net.eval()
     total_top1, total_top5, total_num, feature_bank = 0.0, 0.0, 0, []
-    histograms_for_each_label_per_level = {args.level_number : numpy.array([numpy.zeros_like(torch.empty(2**args.level_number)) for i in range(0, 10)])}
+    histograms_for_each_label_per_level = {args.level_number : numpy.array([numpy.zeros_like(torch.empty(2**args.level_number)) for i in range(0, 20)])}
     labels, predictions = [], []
     with torch.no_grad():
         # generate feature bank
@@ -115,6 +115,34 @@ def test(net, memory_data_loader, test_data_loader, args):
             ## TREE PART
             prob_features = probability_vec_with_level(tree_output, args.level_number)
             prob_features = net.masks_for_level[args.level_number] * prob_features
+
+            if args.dataset_name == "cifar100":  # super-class
+                super_label = [
+                    [72, 4, 95, 30, 55],
+                    [73, 32, 67, 91, 1],
+                    [92, 70, 82, 54, 62],
+                    [16, 61, 9, 10, 28],
+                    [51, 0, 53, 57, 83],
+                    [40, 39, 22, 87, 86],
+                    [20, 25, 94, 84, 5],
+                    [14, 24, 6, 7, 18],
+                    [43, 97, 42, 3, 88],
+                    [37, 17, 76, 12, 68],
+                    [49, 33, 71, 23, 60],
+                    [15, 21, 19, 31, 38],
+                    [75, 63, 66, 64, 34],
+                    [77, 26, 45, 99, 79],
+                    [11, 2, 35, 46, 98],
+                    [29, 93, 27, 78, 44],
+                    [65, 50, 74, 36, 80],
+                    [56, 52, 47, 59, 96],
+                    [8, 58, 90, 13, 48],
+                    [81, 69, 41, 89, 85],
+                ]
+                target_copy = torch.clone(target)
+                for i in range(20):
+                    for j in super_label[i]:
+                        target[target_copy == j] = i
             if hasattr(test_data_loader.dataset, 'subset_index_attr'):
                 new_taget = []
                 for elem in target:
