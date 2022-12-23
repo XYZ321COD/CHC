@@ -111,7 +111,7 @@ def get_contrastive_dataset(name, args):
 
     memory_data = {
         'cifar10': CIFAR10Pair(root='data', train=True, transform=get_transforms('cifar10', args)[1], download=True),
-        'stl10': STL10Pair(root='data', split='train', transform=get_transforms('stl10', args)[1], download=True),
+        'stl10': STL10Pair(root='data', split='train', transform=get_transforms('stl10', args)[0], download=True),
         # 'imagenet10': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenet10', args)[1]), args),
         # 'imagenetdogs': filter_ImageNet(ImageNetPair('/shared/sets/datasets/vision/ImageNet', split='train', transform=get_transforms('imagenetdogs', args)[1]), args),
         'mnist': MNISTPair(root='data', train=True, transform=get_transforms('mnist', args)[1], download=True),
