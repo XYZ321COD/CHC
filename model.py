@@ -18,7 +18,7 @@ class Model(nn.Module):
                                     nn.ReLU(inplace=True), nn.Linear(512, feature_dim, bias=True))
             self.tree_model = nn.Sequential(nn.Linear(512, ((2**(level_number+1))-1) - 2**level_number), nn.Sigmoid())
         else:
-            for name, module in resnet50().named_children():
+            for name, module in resnet18().named_children():
                 if name == 'conv1':
                     module = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
                 if not isinstance(module, nn.Linear) and not isinstance(module, nn.MaxPool2d):
@@ -26,9 +26,9 @@ class Model(nn.Module):
             # encoder
             self.f = nn.Sequential(*self.f)
             # projection head
-            self.g = nn.Sequential(nn.Linear(2048, 512, bias=False), nn.BatchNorm1d(512),
+            self.g = nn.Sequential(nn.Linear(512, 512, bias=False), nn.BatchNorm1d(512),
                                     nn.ReLU(inplace=True), nn.Linear(512, feature_dim, bias=True))
-            self.tree_model = nn.Sequential(nn.Linear(2048, ((2**(level_number+1))-1) - 2**level_number), nn.Sigmoid())
+            self.tree_model = nn.Sequential(nn.Linear(512, ((2**(level_number+1))-1) - 2**level_number), nn.Sigmoid())
         
         if args.load_model:
             self.load_state_dict(torch.load('./pre-trained/128_0.5_200_128_1000_model.pth', map_location='cpu'), strict=False)
