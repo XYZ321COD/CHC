@@ -243,11 +243,11 @@ if __name__ == '__main__':
 
         # save statistics
         data_frame = pd.DataFrame(data=results, index=range(1, epoch + 1))
-        data_frame.to_csv(os.path.join(writer.log_dir, '{}_statistics.csv'.format(save_name_pre)), index_label='epoch')
+        data_frame.to_csv(os.path.join(writer.log_dir, '{}_statistics_resnet34.csv'.format(save_name_pre)), index_label='epoch')
         if nmi > best_nmi:
             best_nmi = nmi
-            torch.save(model.state_dict(), 'results/{}_model.pth'.format(save_name_pre))
+            torch.save(model.state_dict(), 'results/{}_model_resnet34.pth'.format(save_name_pre))
 
-    torch.save(model.state_dict(), 'results/{}_model.pth'.format('last_epoch_model'))
-    torch.save(model.masks_for_level, 'results/last_epoch_model_masks.pth')
+    torch.save(model.state_dict(), 'results/{}_model_resnet34.pth'.format('last_epoch_model'))
+    torch.save(model.masks_for_level, 'results/last_epoch_model_masks_resnet34.pth')
     
